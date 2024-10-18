@@ -1,4 +1,3 @@
-
 package pk.ajneb97;
 
 import org.bukkit.Bukkit;
@@ -19,6 +18,7 @@ import pk.ajneb97.tasks.InventoryUpdateTaskManager;
 import pk.ajneb97.tasks.PlayerDataSaveTask;
 import pk.ajneb97.versions.NMSManager;
 import pk.ajneb97.utils.ServerVersion;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class PlayerKits2 extends JavaPlugin {
 
@@ -43,9 +43,10 @@ public class PlayerKits2 extends JavaPlugin {
     private PlayerDataSaveTask playerDataSaveTask;
     private MySQLConnection mySQLConnection;
 
-    public void onEnable(){
+    public void onEnable() {
         setVersion();
         setPrefix();
+
         registerCommands();
         registerEvents();
 
@@ -57,9 +58,37 @@ public class PlayerKits2 extends JavaPlugin {
         this.nmsManager = new NMSManager(this);
         this.playerDataManager = new PlayerDataManager(this);
 
-        this.configsManager = new ConfigsManager(this);
-        this.configsManager.configure();
+        // Asynchronous configuration loading
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                configsManager = new ConfigsManager(PlayerKits2.this);
+                configsManager.configure();
 
+                // After config is loaded, do post-setup tasks
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        postConfigSetup();
+                    }
+                }.runTask(PlayerKits2.this);
+            }
+        }.runTaskAsynchronously(this);
+
+        PlayerKitsAPI api = new PlayerKitsAPI(this);
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new ExpansionPlayerKits(this).register();
+        }
+        Metrics metrics = new Metrics(this, 19795);
+
+        updateCheckerManager = new UpdateCheckerManager(version);
+        updateMessage(updateCheckerManager.check());
+
+        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&eHas been enabled! &fVersion: " + version));
+        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&eThanks for using my plugin!   &f~Ajneb97"));
+    }
+
+    private void postConfigSetup() {
         this.migrationManager = new MigrationManager(this);
 
         this.inventoryUpdateTaskManager = new InventoryUpdateTaskManager(this);
@@ -68,32 +97,37 @@ public class PlayerKits2 extends JavaPlugin {
         this.verifyManager = new VerifyManager(this);
         this.verifyManager.verify();
 
-        if(configsManager.getMainConfigManager().isMySQL()){
+        if (configsManager.getMainConfigManager().isMySQL()) {
             mySQLConnection = new MySQLConnection(this);
             mySQLConnection.setupMySql();
-        }else{
+        } else {
             reloadPlayerDataSaveTask();
         }
+    }
 
-        PlayerKitsAPI api = new PlayerKitsAPI(this);
-        if(getServer().getPluginManager().getPlugin("PlaceholderAPI") != null){
-            new ExpansionPlayerKits(this).register();
+    public void onDisable() {
+        // Save player data asynchronously
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (playerDataSaveTask != null) {
+                    playerDataSaveTask.end();
+                }
+                configsManager.getPlayersConfigManager().saveConfigs();
+                Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&eHas been disabled! &fVersion: " + version));
+            }
+        }.runTaskAsynchronously(this);
+    }
+
+    public void reloadPlayerDataSaveTask() {
+        if (playerDataSaveTask != null) {
+            playerDataSaveTask.end();
         }
-        Metrics metrics = new Metrics(this,19795);
-
-        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix+"&eHas been enabled! &fVersion: "+version));
-        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix+"&eThanks for using my plugin!   &f~Ajneb97"));
-
-        updateCheckerManager = new UpdateCheckerManager(version);
-        updateMessage(updateCheckerManager.check());
+        playerDataSaveTask = new PlayerDataSaveTask(this);
+        playerDataSaveTask.start(configsManager.getMainConfigManager().getConfig().getInt("player_data_save_time"));
     }
 
-    public void onDisable(){
-        this.configsManager.getPlayersConfigManager().saveConfigs();
-        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix+"&eHas been disabled! &fVersion: "+version));
-    }
-
-    public void registerCommands(){
+    public void registerCommands() {
         this.getCommand("kit").setExecutor(new MainCommand(this));
     }
 
@@ -104,22 +138,14 @@ public class PlayerKits2 extends JavaPlugin {
         pm.registerEvents(new OtherListener(), this);
     }
 
-    public void reloadPlayerDataSaveTask() {
-        if(playerDataSaveTask != null) {
-            playerDataSaveTask.end();
-        }
-        playerDataSaveTask = new PlayerDataSaveTask(this);
-        playerDataSaveTask.start(configsManager.getMainConfigManager().getConfig().getInt("player_data_save_time"));
-    }
-
-    public void setPrefix(){
+    public void setPrefix() {
         prefix = MessagesManager.getColoredMessage("&8[&bPlayerKits&a²&8] ");
     }
 
-    public void setVersion(){
+    public void setVersion() {
         String packageName = Bukkit.getServer().getClass().getPackage().getName();
         String bukkitVersion = Bukkit.getServer().getBukkitVersion().split("-")[0];
-        switch(bukkitVersion){
+        switch (bukkitVersion) {
             case "1.20.5":
             case "1.20.6":
                 serverVersion = ServerVersion.v1_20_R4;
@@ -189,16 +215,15 @@ public class PlayerKits2 extends JavaPlugin {
         return migrationManager;
     }
 
-    public void updateMessage(UpdateCheckerResult result){
-        if(!result.isError()){
+    public void updateMessage(UpdateCheckerResult result) {
+        if (!result.isError()) {
             String latestVersion = result.getLatestVersion();
-            if(latestVersion != null){
-                Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage("&cThere is a new version available. &e(&7"+latestVersion+"&e)"));
+            if (latestVersion != null) {
+                Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage("&cThere is a new version available. &e(&7" + latestVersion + "&e)"));
                 Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage("&cYou can download it at: &fhttps://modrinth.com/plugin/playerkits-2"));
             }
-        }else{
-            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix+"&cError while checking update."));
+        } else {
+            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&cError while checking update."));
         }
-
     }
 }
