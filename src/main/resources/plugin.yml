@@ -1,9 +1,9 @@
 main: pk.ajneb97.PlayerKits2
-version: 1.12.6
+version: 0.0.1
 name: PlayerKits2
 api-version: 1.13
 softdepend: [Vault,PlaceholderAPI]
-author: Ajneb97
+author: [Ajneb97, Infnox]
 
 commands:
   kit:

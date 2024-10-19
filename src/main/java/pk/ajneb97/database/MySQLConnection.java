@@ -8,136 +8,64 @@ import pk.ajneb97.managers.MessagesManager;
 import pk.ajneb97.model.PlayerData;
 import pk.ajneb97.model.PlayerDataKit;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.*;
 
 public class MySQLConnection {
 
-    private PlayerKits2 plugin;
+    private final PlayerKits2 plugin;
     private HikariConnection connection;
-    private String host;
-    private String database;
-    private String username;
-    private String password;
+    private String host, database, username, password;
     private int port;
 
-    public MySQLConnection(PlayerKits2 plugin){
+    public MySQLConnection(PlayerKits2 plugin) {
         this.plugin = plugin;
     }
 
-    public void setupMySql(){
+    public void setupMySql() {
         FileConfiguration config = plugin.getConfigsManager().getMainConfigManager().getConfig();
         try {
-            host = config.getString("mysql_database.host");
-            port = Integer.valueOf(config.getString("mysql_database.port"));
-            database = config.getString("mysql_database.database");
-            username = config.getString("mysql_database.username");
-            password = config.getString("mysql_database.password");
-            connection = new HikariConnection(host,port,database,username,password);
-            connection.getHikari().getConnection();
+            this.host = config.getString("mysql_database.host");
+            this.port = Integer.parseInt(config.getString("mysql_database.port"));
+            this.database = config.getString("mysql_database.database");
+            this.username = config.getString("mysql_database.username");
+            this.password = config.getString("mysql_database.password");
+
+            this.connection = new HikariConnection(host, port, database, username, password);
             createTables();
             loadData();
-            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(plugin.prefix+" &aSuccessfully connected to the Database."));
-        }catch(Exception e) {
-            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(plugin.prefix+" &cError while connecting to the Database."));
+
+            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(plugin.prefix + " &aSuccessfully connected to the Database."));
+        } catch (Exception e) {
+            Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(plugin.prefix + " &cError while connecting to the Database."));
         }
     }
-
 
     public String getDatabase() {
         return this.database;
     }
 
-    public Connection getConnection() {
-        try {
-            return connection.getHikari().getConnection();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
+    private Connection getConnection() throws SQLException {
+        return connection.getHikari().getConnection();
     }
 
-    public void loadData(){
-        ArrayList<PlayerData> players = new ArrayList<>();
-        try(Connection connection = getConnection()){
-            PreparedStatement statement = connection.prepareStatement(
-                    "SELECT playerkits_players.UUID, playerkits_players.PLAYER_NAME, " +
-                            "playerkits_players_kits.NAME, " +
-                            "playerkits_players_kits.COOLDOWN, " +
-                            "playerkits_players_kits.ONE_TIME, " +
-                            "playerkits_players_kits.BOUGHT " +
-                            "FROM playerkits_players LEFT JOIN playerkits_players_kits " +
-                            "ON playerkits_players.UUID = playerkits_players_kits.UUID");
-
-            ResultSet result = statement.executeQuery();
-
-            Map<String, PlayerData> playerMap = new HashMap<>();
-            while(result.next()){
-                String uuid = result.getString("UUID");
-                String playerName = result.getString("PLAYER_NAME");
-                String kitName = result.getString("NAME");
-                long cooldown = result.getLong("COOLDOWN");
-                boolean oneTime = result.getBoolean("ONE_TIME");
-                boolean bought = result.getBoolean("BOUGHT");
-
-                PlayerData player = playerMap.get(uuid);
-
-                if(player == null){
-                    //Create and add it
-                    player = new PlayerData(playerName,uuid);
-                    players.add(player);
-                    playerMap.put(uuid, player);
-                }
-
-                if(kitName != null){
-                    PlayerDataKit playerDataKit = new PlayerDataKit(kitName);
-                    playerDataKit.setCooldown(cooldown);
-                    playerDataKit.setOneTime(oneTime);
-                    playerDataKit.setBought(bought);
-                    player.addKit(playerDataKit);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        plugin.getPlayerDataManager().setPlayers(players);
-    }
-
-    public void createTables() {
-        try(Connection connection = getConnection()){
-            PreparedStatement statement1 = connection.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS playerkits_players" +
-                    " (UUID varchar(200) NOT NULL, " +
-                    " PLAYER_NAME varchar(50), " +
-                    " PRIMARY KEY ( UUID ))"
-            );
-            statement1.executeUpdate();
-            PreparedStatement statement2 = connection.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS playerkits_players_kits" +
-                    " (ID int NOT NULL AUTO_INCREMENT, " +
-                    " UUID varchar(200) NOT NULL, " +
-                    " NAME varchar(100), " +
-                    " COOLDOWN BIGINT, " +
-                    " ONE_TIME BOOLEAN, " +
-                    " BOUGHT BOOLEAN, " +
-                    " PRIMARY KEY ( ID ), " +
-                    " FOREIGN KEY (UUID) REFERENCES playerkits_players(UUID))");
-            statement2.executeUpdate();
+    private void executeUpdate(String query, QueryParameterSetter setter) {
+        try (Connection conn = getConnection(); PreparedStatement stmt = conn.prepareStatement(query)) {
+            setter.setParameters(stmt);
+            stmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    public void getPlayer(String uuid,PlayerCallback callback){
-        new BukkitRunnable(){
+    public void loadData() {
+        new BukkitRunnable() {
             @Override
             public void run() {
-                PlayerData player = null;
-                try(Connection connection = getConnection()){
+                // Initialize the ArrayList directly
+                ArrayList<PlayerData> players = new ArrayList<>();
+
+                try (Connection connection = getConnection()) {
                     PreparedStatement statement = connection.prepareStatement(
                             "SELECT playerkits_players.UUID, playerkits_players.PLAYER_NAME, " +
                                     "playerkits_players_kits.NAME, " +
@@ -145,24 +73,24 @@ public class MySQLConnection {
                                     "playerkits_players_kits.ONE_TIME, " +
                                     "playerkits_players_kits.BOUGHT " +
                                     "FROM playerkits_players LEFT JOIN playerkits_players_kits " +
-                                    "ON playerkits_players.UUID = playerkits_players_kits.UUID " +
-                                    "WHERE playerkits_players.UUID = ?");
+                                    "ON playerkits_players.UUID = playerkits_players_kits.UUID"
+                    );
 
-                    statement.setString(1, uuid);
                     ResultSet result = statement.executeQuery();
+                    // Use a Map for efficient lookups while processing the data
+                    Map<String, PlayerData> playerMap = new HashMap<>();
 
-                    boolean firstFind = true;
-                    while(result.next()){
+                    while (result.next()) {
+                        String uuid = result.getString("UUID");
                         String playerName = result.getString("PLAYER_NAME");
                         String kitName = result.getString("NAME");
                         long cooldown = result.getLong("COOLDOWN");
                         boolean oneTime = result.getBoolean("ONE_TIME");
                         boolean bought = result.getBoolean("BOUGHT");
-                        if(firstFind){
-                            firstFind = false;
-                            player = new PlayerData(playerName,uuid);
-                        }
-                        if(kitName != null){
+
+                        PlayerData player = playerMap.computeIfAbsent(uuid, id -> new PlayerData(playerName, uuid));
+
+                        if (kitName != null) {
                             PlayerDataKit playerDataKit = new PlayerDataKit(kitName);
                             playerDataKit.setCooldown(cooldown);
                             playerDataKit.setOneTime(oneTime);
@@ -171,13 +99,15 @@ public class MySQLConnection {
                         }
                     }
 
-                    PlayerData finalPlayer = player;
-                    new BukkitRunnable(){
+                    players.addAll(playerMap.values());
+
+                    new BukkitRunnable() {
                         @Override
                         public void run() {
-                            callback.onDone(finalPlayer);
+                            plugin.getPlayerDataManager().setPlayers(players);
                         }
                     }.runTask(plugin);
+
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
@@ -185,113 +115,149 @@ public class MySQLConnection {
         }.runTaskAsynchronously(plugin);
     }
 
-    public void createPlayer(PlayerData player,SimpleCallback callback){
-        new BukkitRunnable(){
+
+    private void createTables() {
+        executeUpdate(
+                "CREATE TABLE IF NOT EXISTS playerkits_players " +
+                        "(UUID varchar(200) NOT NULL, PLAYER_NAME varchar(50), PRIMARY KEY (UUID))",
+                stmt -> {}
+        );
+        executeUpdate(
+                "CREATE TABLE IF NOT EXISTS playerkits_players_kits " +
+                        "(ID int NOT NULL AUTO_INCREMENT, UUID varchar(200) NOT NULL, NAME varchar(100), " +
+                        "COOLDOWN BIGINT, ONE_TIME BOOLEAN, BOUGHT BOOLEAN, PRIMARY KEY (ID), " +
+                        "FOREIGN KEY (UUID) REFERENCES playerkits_players(UUID))",
+                stmt -> {}
+        );
+    }
+
+    public void getPlayer(String uuid, PlayerCallback callback) {
+        new BukkitRunnable() {
             @Override
             public void run() {
-                try(Connection connection = getConnection()){
-                    PreparedStatement statement = connection.prepareStatement(
-                            "INSERT INTO playerkits_players " +
-                                    "(UUID, PLAYER_NAME) VALUE (?,?)");
+                PlayerData player = null;
+                try (Connection conn = getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(
+                             "SELECT p.UUID, p.PLAYER_NAME, k.NAME, k.COOLDOWN, k.ONE_TIME, k.BOUGHT " +
+                                     "FROM playerkits_players p LEFT JOIN playerkits_players_kits k ON p.UUID = k.UUID WHERE p.UUID = ?")) {
 
-                    statement.setString(1, player.getUuid());
-                    statement.setString(2, player.getName());
-                    statement.executeUpdate();
-
-                    new BukkitRunnable(){
-                        @Override
-                        public void run() {
-                            callback.onDone();
+                    stmt.setString(1, uuid);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        boolean firstFind = true;
+                        while (rs.next()) {
+                            if (firstFind) {
+                                player = new PlayerData(rs.getString("PLAYER_NAME"), uuid);
+                                firstFind = false;
+                            }
+                            String kitName = rs.getString("NAME");
+                            if (kitName != null) {
+                                PlayerDataKit kit = new PlayerDataKit(kitName);
+                                kit.setCooldown(rs.getLong("COOLDOWN"));
+                                kit.setOneTime(rs.getBoolean("ONE_TIME"));
+                                kit.setBought(rs.getBoolean("BOUGHT"));
+                                player.addKit(kit);
+                            }
                         }
-                    }.runTask(plugin);
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
-        }.runTaskAsynchronously(plugin);
-    }
-
-    public void updatePlayerName(PlayerData player){
-        new BukkitRunnable(){
-            @Override
-            public void run() {
-                try(Connection connection = getConnection()){
-                    PreparedStatement statement = connection.prepareStatement(
-                            "UPDATE playerkits_players SET " +
-                                    "PLAYER_NAME=? WHERE UUID=?");
-
-                    statement.setString(1, player.getName());
-                    statement.setString(2, player.getUuid());
-                    statement.executeUpdate();
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
-        }.runTaskAsynchronously(plugin);
-    }
-
-    public void updateKit(PlayerData player,PlayerDataKit kit,boolean mustCreate){
-        new BukkitRunnable(){
-            @Override
-            public void run() {
-                try(Connection connection = getConnection()){
-                    PreparedStatement statement = null;
-                    if(mustCreate){
-                        // Insert
-                        statement = connection.prepareStatement(
-                                "INSERT INTO playerkits_players_kits " +
-                                        "(UUID, NAME, COOLDOWN, ONE_TIME, BOUGHT) VALUE (?,?,?,?,?)");
-
-                        statement.setString(1, player.getUuid());
-                        statement.setString(2, kit.getName());
-                        statement.setLong(3, kit.getCooldown());
-                        statement.setBoolean(4, kit.isOneTime());
-                        statement.setBoolean(5, kit.isBought());
-                    }else{
-                        // Update
-                        statement = connection.prepareStatement(
-                                "UPDATE playerkits_players_kits SET " +
-                                        "COOLDOWN=?, ONE_TIME=?, BOUGHT=? WHERE UUID=? AND NAME=?");
-
-                        statement.setLong(1, kit.getCooldown());
-                        statement.setBoolean(2, kit.isOneTime());
-                        statement.setBoolean(3, kit.isBought());
-                        statement.setString(4, player.getUuid());
-                        statement.setString(5, kit.getName());
                     }
-                    statement.executeUpdate();
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
+                final PlayerData result = player;
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        callback.onDone(result);
+                    }
+                }.runTask(plugin);
             }
         }.runTaskAsynchronously(plugin);
     }
 
-    public void resetKit(String uuid,String kitName,boolean all){
-        new BukkitRunnable(){
+    public void createPlayer(PlayerData player, SimpleCallback callback) {
+        new BukkitRunnable() {
             @Override
             public void run() {
-                try(Connection connection = getConnection()){
-                    PreparedStatement statement;
-                    if(all){
-                        statement = connection.prepareStatement(
-                                "DELETE FROM playerkits_players_kits " +
-                                        "WHERE NAME=?");
-                        statement.setString(1, kitName);
-                    }else{
-                        statement = connection.prepareStatement(
-                                "DELETE FROM playerkits_players_kits " +
-                                        "WHERE UUID=? AND NAME=?");
-
-                        statement.setString(1, uuid);
-                        statement.setString(2, kitName);
+                executeUpdate(
+                        "INSERT INTO playerkits_players (UUID, PLAYER_NAME) VALUES (?, ?)",
+                        stmt -> {
+                            stmt.setString(1, player.getUuid());
+                            stmt.setString(2, player.getName());
+                        }
+                );
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        callback.onDone();
                     }
-                    statement.executeUpdate();
-
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
+                }.runTask(plugin);
             }
         }.runTaskAsynchronously(plugin);
+    }
+
+    public void updatePlayerName(PlayerData player) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                executeUpdate(
+                        "UPDATE playerkits_players SET PLAYER_NAME=? WHERE UUID=?",
+                        stmt -> {
+                            stmt.setString(1, player.getName());
+                            stmt.setString(2, player.getUuid());
+                        }
+                );
+            }
+        }.runTaskAsynchronously(plugin);
+    }
+
+    public void updateKit(PlayerData player, PlayerDataKit kit, boolean mustCreate) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                String query = mustCreate ?
+                        "INSERT INTO playerkits_players_kits (UUID, NAME, COOLDOWN, ONE_TIME, BOUGHT) VALUES (?,?,?,?,?)" :
+                        "UPDATE playerkits_players_kits SET COOLDOWN=?, ONE_TIME=?, BOUGHT=? WHERE UUID=? AND NAME=?";
+
+                executeUpdate(query, stmt -> {
+                    if (mustCreate) {
+                        stmt.setString(1, player.getUuid());
+                        stmt.setString(2, kit.getName());
+                        stmt.setLong(3, kit.getCooldown());
+                        stmt.setBoolean(4, kit.isOneTime());
+                        stmt.setBoolean(5, kit.isBought());
+                    } else {
+                        stmt.setLong(1, kit.getCooldown());
+                        stmt.setBoolean(2, kit.isOneTime());
+                        stmt.setBoolean(3, kit.isBought());
+                        stmt.setString(4, player.getUuid());
+                        stmt.setString(5, kit.getName());
+                    }
+                });
+            }
+        }.runTaskAsynchronously(plugin);
+    }
+
+    public void resetKit(String uuid, String kitName, boolean all) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                String query = all ?
+                        "DELETE FROM playerkits_players_kits WHERE NAME=?" :
+                        "DELETE FROM playerkits_players_kits WHERE UUID=? AND NAME=?";
+
+                executeUpdate(query, stmt -> {
+                    if (all) {
+                        stmt.setString(1, kitName);
+                    } else {
+                        stmt.setString(1, uuid);
+                        stmt.setString(2, kitName);
+                    }
+                });
+            }
+        }.runTaskAsynchronously(plugin);
+    }
+
+    @FunctionalInterface
+    private interface QueryParameterSetter {
+        void setParameters(PreparedStatement stmt) throws SQLException;
     }
 }

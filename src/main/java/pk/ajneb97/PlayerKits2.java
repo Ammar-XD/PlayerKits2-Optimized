@@ -79,7 +79,7 @@ public class PlayerKits2 extends JavaPlugin {
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             new ExpansionPlayerKits(this).register();
         }
-        Metrics metrics = new Metrics(this, 19795);
+        Metrics metrics = new Metrics(this, 23672);
 
         updateCheckerManager = new UpdateCheckerManager(version);
         updateMessage(updateCheckerManager.check());
@@ -106,17 +106,18 @@ public class PlayerKits2 extends JavaPlugin {
     }
 
     public void onDisable() {
-        // Save player data asynchronously
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (playerDataSaveTask != null) {
-                    playerDataSaveTask.end();
-                }
-                configsManager.getPlayersConfigManager().saveConfigs();
-                Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&eHas been disabled! &fVersion: " + version));
-            }
-        }.runTaskAsynchronously(this);
+        Bukkit.getScheduler().cancelTasks(this);
+
+        if (playerDataSaveTask != null) {
+            playerDataSaveTask.end();
+        }
+
+        if (configsManager != null) {
+            configsManager.getPlayersConfigManager().saveConfigs();
+        }
+
+        Bukkit.getConsoleSender().sendMessage(MessagesManager.getColoredMessage(prefix + "&eHas been disabled! &fVersion: " + version));
+
     }
 
     public void reloadPlayerDataSaveTask() {
