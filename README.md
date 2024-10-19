@@ -1,3 +1,4 @@
-# PlayerKits2
-https://www.spigotmc.org/resources/playerkits-2-fully-configurable-kits-1-8-1-20.112616/
- 
+# PlayerKits2 - Optimized
+
+# Update Log
+- **Optimized Kit Lookup:** Replaced the old `ArrayList<Kit>` with a more efficient `HashMap<String, Kit>`. This change drastically improves the speed of kit retrieval, creation, and deletion by allowing constant-time (O(1)) operations.
