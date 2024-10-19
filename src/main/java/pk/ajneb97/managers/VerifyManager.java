@@ -17,10 +17,14 @@ import java.util.List;
 public class VerifyManager {
     private PlayerKits2 plugin;
     private ArrayList<PKBaseError> errors;
+    private final KitsManager kitsManager;
+    private final InventoryManager inventoryManager;
     private boolean criticalErrors;
-    public VerifyManager(PlayerKits2 plugin) {
+    public VerifyManager(PlayerKits2 plugin, KitsManager kitsManager, InventoryManager inventoryManager) {
         this.plugin = plugin;
-        this.errors = new ArrayList<PKBaseError>();
+        this.kitsManager = kitsManager;
+        this.inventoryManager = inventoryManager;
+        this.errors = new ArrayList<>();
         this.criticalErrors = false;
     }
 
@@ -40,32 +44,22 @@ public class VerifyManager {
     }
 
     public void verify() {
-        this.errors = new ArrayList<PKBaseError>();
+        this.errors = new ArrayList<>();
         this.criticalErrors = false;
 
         //CHECK KITS
-        ArrayList<Kit> kits = plugin.getKitsManager().getKits();
-        for(Kit kit : kits) {
-            verifyKit(kit);
-        }
+        kitsManager.getKits().forEach(this::verifyKit);
 
         //CHECK INVENTORIES
-        InventoryManager inventoryManager = plugin.getInventoryManager();
-        ArrayList<KitInventory> inventories = inventoryManager.getInventories();
-        for(KitInventory inventory : inventories){
-            verifyInventory(inventory);
-        }
-        if(inventoryManager.getInventory("main_inventory") == null){
-            errors.add(new PKInventoryDefaultNotExistsError("inventory.yml",null,true,"main_inventory"));
-            criticalErrors = true;
-        }
-        if(inventoryManager.getInventory("preview_inventory") == null){
-            errors.add(new PKInventoryDefaultNotExistsError("inventory.yml",null,true,"preview_inventory"));
-            criticalErrors = true;
-        }
-        if(inventoryManager.getInventory("buy_requirements_inventory") == null){
-            errors.add(new PKInventoryDefaultNotExistsError("inventory.yml",null,true,"buy_requirements_inventory"));
-            criticalErrors = true;
+
+        inventoryManager.getInventories().forEach(this::verifyInventory);
+
+        String[] requiredInventories = {"main_inventory", "preview_inventory", "buy_requirements_inventory"};
+        for (String inv : requiredInventories) {
+            if (inventoryManager.getInventory(inv) == null) {
+                errors.add(new PKInventoryDefaultNotExistsError("inventory.yml", null, true, inv));
+                criticalErrors = true;
+            }
         }
     }
 

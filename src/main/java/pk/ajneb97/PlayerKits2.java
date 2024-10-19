@@ -94,7 +94,7 @@ public class PlayerKits2 extends JavaPlugin {
         this.inventoryUpdateTaskManager = new InventoryUpdateTaskManager(this);
         this.inventoryUpdateTaskManager.start();
 
-        this.verifyManager = new VerifyManager(this);
+        this.verifyManager = new VerifyManager(this, kitsManager,  inventoryManager);
         this.verifyManager.verify();
 
         if (configsManager.getMainConfigManager().isMySQL()) {
